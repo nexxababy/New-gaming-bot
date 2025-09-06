@@ -1,17 +1,17 @@
-# Base image
-FROM python:3.10-slim
+# Dockerfile
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
+# keep pip cache small
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Copy requirements first (better for caching)
 COPY requirements.txt .
-
-# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all files
 COPY . .
 
-# Run the bot
+# ensure data file exists and is writeable
+RUN mkdir -p /app/data || true
+
 CMD ["python", "bot.py"]
