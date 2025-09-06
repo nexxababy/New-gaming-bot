@@ -1,1 +1,1 @@
-# package init
+__all__ = ["antakshari", "rps"]
