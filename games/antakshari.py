@@ -1,104 +1,94 @@
-import random, asyncio
 from pyrogram import filters
-from utils import pretty_name
-from config import DAILY_REWARD
+from pyrogram.types import Message
+from main_utils import normalize
+from utils import validators
 
-active_antakshari = {}
+GAMES = {}
 
-def register_antakshari(app, db):
-    @app.on_message(filters.command("anta"))
-    async def anta_cmd(_, m):
-        chat_id = m.chat.id
-        if len(m.command) < 2:
-            return await m.reply_text("Usage:\n/anta start | /anta join | /anta stop | /anta <word>")
+class AntakshariGame:
+    def __init__(self, chat_id):
+        self.chat_id = chat_id
+        self.players = []
+        self.current_index = 0
+        self.started = False
+        self.last_word = None
+        self.scores = {}
 
-        action = m.command[1].lower()
+    def add_player(self, user_id, name):
+        if user_id in [p[0] for p in self.players]:
+            return False
+        self.players.append((user_id, name))
+        self.scores[str(user_id)] = 0
+        return True
 
-        # 🎮 Start new game
-        if action == "start":
-            if chat_id in active_antakshari:
-                return await m.reply_text("⚠️ Game already running!")
-            letter = random.choice("abcdefghijklmnopqrstuvwxyz")
-            active_antakshari[chat_id] = {
-                "current_letter": letter,
-                "used": set(),
-                "players": {},
-                "turn": None,
-                "time_limit": 20
-            }
-            return await m.reply_text(f"🎶 Antakshari started!\nJoin with /anta join\nFirst letter will be **{letter.upper()}**")
+    def start(self):
+        if len(self.players) < 2:
+            return False
+        self.started = True
+        self.current_index = 0
+        return True
 
-        # 👥 Join game
-        if action == "join":
-            if chat_id not in active_antakshari:
-                return await m.reply_text("Start with /anta start")
-            state = active_antakshari[chat_id]
-            state["players"][m.from_user.id] = True
-            return await m.reply_text(f"{pretty_name(m)} joined the game ✅")
+    def current_player(self):
+        if not self.players:
+            return None
+        return self.players[self.current_index]
 
-        # ⏹ Stop game
-        if action == "stop":
-            if chat_id in active_antakshari:
-                active_antakshari.pop(chat_id)
-                return await m.reply_text("⏹ Antakshari stopped.")
-            return await m.reply_text("No game running.")
+    def advance(self):
+        self.current_index = (self.current_index + 1) % len(self.players)
 
-        # 🎲 Player turn (word play)
-        if chat_id not in active_antakshari:
-            return await m.reply_text("Start with /anta start")
-        state = active_antakshari[chat_id]
 
-        word = action.lower()
-
-        # Only allow current turn player
-        if state["turn"] != m.from_user.id:
-            return await m.reply_text("⏳ Wait for your turn!")
-
-        # Word rules
-        if not word.startswith(state["current_letter"]):
-            await eliminate_player(chat_id, m.from_user.id, m, reason="Wrong starting letter!")
-            return
-        if word in state["used"]:
-            await eliminate_player(chat_id, m.from_user.id, m, reason="Word already used!")
-            return
-
-        # ✅ Word accepted
-        state["used"].add(word)
-        state["current_letter"] = word[-1]
-
-        await db.ensure_user(m.from_user.id, pretty_name(m))
-        u = await db.get_user(m.from_user.id)
-        await db.update_user(m.from_user.id, coins=u["coins"]+5, xp=u["xp"]+2)
-
-        await m.reply_text(f"✅ {pretty_name(m)} played **{word}**!\nNext letter: {state['current_letter'].upper()}")
-
-        # Next turn
-        await next_turn(chat_id, m)
-
-# Helper functions
-async def next_turn(chat_id, m):
-    state = active_antakshari[chat_id]
-    players = list(state["players"].keys())
-    if len(players) == 1:
-        winner = players[0]
-        await m.reply_text(f"🏆 Winner is {winner} 🎉\nReward: +{DAILY_REWARD} coins!")
-        active_antakshari.pop(chat_id, None)
+async def antakshari_start(client, message: Message):
+    chat_id = message.chat.id
+    GAMES.setdefault(chat_id, AntakshariGame(chat_id))
+    game = GAMES[chat_id]
+    if game.started:
+        await message.reply_text("Game already started in this chat.")
         return
+    game.add_player(message.from_user.id, message.from_user.first_name)
+    game.start()
+    await message.reply_text(f"Antakshari started! Players: {', '.join([p[1] for p in game.players])}\n{game.current_player()[1]}'s turn. Send a word to begin.")
 
-    # Select next player
-    state["turn"] = random.choice(players)
-    state["time_limit"] = max(5, state["time_limit"]-2)
 
-    await m.reply_text(f"🎤 Next turn: {state['turn']}\nLetter: {state['current_letter'].upper()}\nTime: {state['time_limit']}s")
+async def antakshari_join(client, message: Message):
+    chat_id = message.chat.id
+    GAMES.setdefault(chat_id, AntakshariGame(chat_id))
+    game = GAMES[chat_id]
+    added = game.add_player(message.from_user.id, message.from_user.first_name)
+    if not added:
+        await message.reply_text("You're already in the game.")
+    else:
+        await message.reply_text(f"{message.from_user.first_name} joined the Antakshari game.")
 
-    # Wait for turn
-    await asyncio.sleep(state["time_limit"])
-    # If player didn't play
-    if state and state["turn"] == state["turn"]:  # still same turn
-        await eliminate_player(chat_id, state["turn"], m, reason="⏰ Timeout!")
 
-async def eliminate_player(chat_id, uid, m, reason):
-    state = active_antakshari[chat_id]
-    state["players"].pop(uid, None)
-    await m.reply_text(f"❌ {uid} eliminated! {reason}")
-    await next_turn(chat_id, m)
+async def antakshari_word(client, message: Message):
+    chat_id = message.chat.id
+    if chat_id not in GAMES:
+        return
+    game = GAMES[chat_id]
+    if not game.started:
+        return
+    user = message.from_user
+    current = game.current_player()
+    if current[0] != user.id:
+        return
+    word = message.text.strip()
+    if game.last_word is None:
+        game.last_word = word
+        await message.reply_text(f"Accepted: {word}. Next should start with '{normalize(word)[-1]}'\nNext: {game.players[(game.current_index+1)%len(game.players)][1]}")
+        game.advance()
+        return
+    if validators.valid_start(game.last_word, word):
+        game.last_word = word
+        game.scores[str(user.id)] += 1
+        await message.reply_text(f"Good! {user.first_name} gets a point. Current score: {game.scores}")
+        game.advance()
+    else:
+        game.scores[str(user.id)] = max(0, game.scores.get(str(user.id),0)-1)
+        await message.reply_text(f"Invalid start. {user.first_name} loses a point. Current score: {game.scores}")
+        game.advance()
+
+
+def register(app, db):
+    app.add_handler(filters.command("antakshari_start") & filters.group, antakshari_start)
+    app.add_handler(filters.command("antakshari_join") & filters.group, antakshari_join)
+    app.add_handler(filters.text & filters.group, antakshari_word)
