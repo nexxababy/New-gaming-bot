@@ -1,53 +1,42 @@
+# database.py
 import json
-import os
-from threading import Lock
+import threading
 
 class JSONDatabase:
-    def __init__(self, data_dir: str = "storage"):
-        self.data_dir = data_dir
-        os.makedirs(self.data_dir, exist_ok=True)
-        self._locks = {}
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.RLock()
+        self._data = {}
+        self._load()
 
-    def _get_path(self, name: str):
-        return os.path.join(self.data_dir, f"{name}.json")
+    def _load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                self._data = json.load(f)
+        except FileNotFoundError:
+            self._data = {}
+        except Exception:
+            self._data = {}
 
-    def _load(self, name: str):
-        path = self._get_path(name)
-        if not os.path.exists(path):
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def _save(self, name: str, obj):
-        path = self._get_path(name)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(obj, f, ensure_ascii=False, indent=2)
-
-    def get_collection(self, name: str):
-        return JSONCollection(self, name)
-
-
-class JSONCollection:
-    def __init__(self, db: JSONDatabase, name: str):
-        self.db = db
-        self.name = name
-        self._lock = Lock()
-
-    def all(self):
-        return self.db._load(self.name)
+    def _save(self):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, indent=2, ensure_ascii=False)
 
     def get(self, key, default=None):
-        data = self.all()
-        return data.get(str(key), default)
+        with self.lock:
+            return self._data.get(key, default)
 
     def set(self, key, value):
-        with self._lock:
-            data = self.all()
-            data[str(key)] = value
-            self.db._save(self.name, data)
+        with self.lock:
+            self._data[key] = value
+            self._save()
 
-    def remove(self, key):
-        with self._lock:
-            data = self.all()
-            data.pop(str(key), None)
-            self.db._save(self.name, data)
+    def update(self, key, **kwargs):
+        with self.lock:
+            d = self._data.setdefault(key, {})
+            d.update(kwargs)
+            self._save()
+
+    def all(self):
+        with self.lock:
+            return self._data
