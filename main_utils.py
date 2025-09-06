@@ -1,10 +1,4 @@
-import time
+import re
 
-def now_ts():
-    return time.time()
-
-def pretty_name(m):
-    user = m.from_user
-    if not user:
-        return "Unknown"
-    return f"@{user.username}" if user.username else user.first_name
+def normalize(text: str) -> str:
+    return re.sub(r"[^a-zA-Z\u0900-\u097F]", "", text).lower()
