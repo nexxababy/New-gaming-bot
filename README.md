@@ -1,20 +1,24 @@
-# 🎮 Telegram Gaming Bot
+# New-gaming-bot
 
-A multi-game bot for Telegram built with **Pyrogram**.
+Telegram Pyrogram gaming bot scaffold with multiple mini-games.
 
-## 🚀 Features
-- User profiles (coins, XP, wins/losses)
-- Daily rewards
-- Games: Guess Number, Rock–Paper–Scissors, Slot Machine, Quiz
-- Duels with bets
-- JSON persistence (no DB needed)
+## Quickstart
+1. Copy `example_config.py` to `config.py` and set `API_ID`, `API_HASH`, `BOT_TOKEN`.
+2. Create a virtualenv and install requirements:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. Run the bot:
+   ```bash
+   python bot.py
+   ```
 
-## ⚡ Setup
-```bash
-git clone https://github.com/yourname/telegram-gaming-bot.git
-cd telegram-gaming-bot
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# .\venv\Scripts\activate # Windows
-pip install -r requirements.txt
-ew-gaming-bot
+## Structure
+- `games/` contains game modules. Each module must implement `register(app, db)`.
+- `database.py` provides a simple JSON-backed store.
+- `utils/` contains helpers.
+
+## Antakshari
+The Antakshari module supports creating a game in a group chat, players joining, and turn-based singing where each next word must start with the last letter of the previous.
