@@ -2,10 +2,10 @@
 import os
 
 # from my.telegram.org and BotFather
-API_ID = int(os.environ.get("API_ID", "123456"))       # replace or set env var
-API_HASH = os.environ.get("API_HASH", "your_api_hash")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "123456:ABCDEF")
-OWNER_ID = int(os.environ.get("OWNER_ID", "0"))       # your uid (optional)
+API_ID = int(os.environ.get("API_ID", "26344421"))       # replace or set env var
+API_HASH = os.environ.get("API_HASH", "4bbcf08096c88dfa79c1e8e03af3ab3a")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8474933953:AAHFAqTJGkSiN7ltZUexXV7syiwdZ6YsiPg")
+OWNER_ID = int(os.environ.get("OWNER_ID", "7639271205"))       # your uid (optional)
 
 # runtime settings
 DB_FILE = os.environ.get("DB_FILE", "data.json")
