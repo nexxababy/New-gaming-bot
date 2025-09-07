@@ -14,9 +14,9 @@ from database import (
     get_all_users,
 )
 
-API_ID = 12345  # replace with your api_id
-API_HASH = "your_api_hash"
-BOT_TOKEN = "your_bot_token"
+API_ID = 26344421  # replace with your api_id
+API_HASH = "4bbcf08096c88dfa79c1e8e03af3ab3a"
+BOT_TOKEN = "8474933953:AAHFAqTJGkSiN7ltZUexXV7syiwdZ6YsiPg"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("GamingBot")
