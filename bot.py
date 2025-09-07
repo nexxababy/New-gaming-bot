@@ -14,7 +14,7 @@ from database import (
     get_all_users,
 )
 
-API_ID = 12345
+API_ID = 12345  # replace with your api_id
 API_HASH = "your_api_hash"
 BOT_TOKEN = "your_bot_token"
 
@@ -28,12 +28,14 @@ app = Client("gaming-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN
 # -----------------------------
 active_guess = {}
 
+
 @app.on_message(filters.command("guess"))
 async def guess_cmd(c: Client, m: Message):
     num = random.randint(1, 10)
     active_guess[m.chat.id] = num
     await ensure_user(m.from_user.id, m.from_user.first_name)
     await m.reply_text("🤔 I picked a number (1–10). Use /try <n>")
+
 
 @app.on_message(filters.command("try"))
 async def try_cmd(c: Client, m: Message):
@@ -57,6 +59,7 @@ async def try_cmd(c: Client, m: Message):
     else:
         hint = "higher" if g < target else "lower"
         await m.reply_text(f"❌ Nope! Try {hint}.")
+
 
 # -----------------------------
 # Daily Reward
@@ -85,6 +88,7 @@ async def daily_handler(c: Client, m: Message):
 
     await m.reply_text(f"🎁 Daily Reward Claimed!\n+{reward_coins} coins\n+{reward_xp} XP")
 
+
 # -----------------------------
 # Profile
 # -----------------------------
@@ -94,7 +98,6 @@ async def profile_handler(c: Client, m: Message):
     user = await get_user(m.from_user.id)
     users = await get_all_users()
 
-    # rank निकालना
     users_sorted = sorted(users, key=lambda x: (x["coins"], x["xp"]), reverse=True)
     rank = next((f"#{i+1}" for i, u in enumerate(users_sorted) if u["uid"] == str(m.from_user.id)), "Unranked")
 
@@ -109,6 +112,7 @@ async def profile_handler(c: Client, m: Message):
         [[InlineKeyboardButton("🏆 Leaderboard", callback_data="show_top")]]
     )
     await m.reply_text(text, reply_markup=buttons)
+
 
 # -----------------------------
 # Leaderboard
@@ -126,6 +130,7 @@ async def top_handler(c: Client, m: Message):
 
     await m.reply_text(text)
 
+
 # -----------------------------
 # Start / Help
 # -----------------------------
@@ -133,6 +138,7 @@ async def top_handler(c: Client, m: Message):
 async def start_handler(c: Client, m: Message):
     await ensure_user(m.from_user.id, m.from_user.first_name)
     await m.reply_text("👋 Welcome! Use /guess to play, /daily to claim reward, /profile to view stats.")
+
 
 @app.on_message(filters.command("help"))
 async def help_handler(c: Client, m: Message):
@@ -148,16 +154,20 @@ async def help_handler(c: Client, m: Message):
     )
     await m.reply_text(txt)
 
+
 # -----------------------------
 # Main
 # -----------------------------
 async def main():
     await init_db()
-    await app.start()
-    me = await app.get_me()
-    logger.info("Bot started: @%s (%s)", me.username, me.id)
-    await idle()
-    await app.stop()
+    try:
+        await app.start()
+        me = await app.get_me()
+        logger.info("Bot started: @%s (%s)", me.username, me.id)
+        await idle()
+    finally:
+        await app.stop()
+
 
 if __name__ == "__main__":
     try:
