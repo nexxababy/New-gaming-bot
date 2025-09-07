@@ -2,6 +2,8 @@ import asyncio
 import random
 import logging
 import re
+import json
+import os
 from datetime import datetime, timedelta
 
 from pyrogram import Client, filters, idle
@@ -14,34 +16,47 @@ API_ID = 12345  # replace with your api_id
 API_HASH = "your_api_hash"
 BOT_TOKEN = "your_bot_token"
 
-app = Client("gaming-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+DATA_DIR = "data"
+DB_FILE = os.path.join(DATA_DIR, "users.json")
 
+# -----------------------------
 # Logger
+# -----------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("GamingBot")
 
 # -----------------------------
-# Simple In-Memory Database
+# Database
 # -----------------------------
-db = {
-    "users": {},
-    "daily": {}
-}
+db = {"users": {}, "daily": {}}
 
+def load_db():
+    global db
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                db = json.load(f)
+                logger.info("Database loaded with %d users", len(db.get("users", {})))
+        except Exception as e:
+            logger.error("Error loading DB: %s", e)
+            db = {"users": {}, "daily": {}}
+
+def save_db():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f)
 
 def pretty_name(name: str) -> str:
     return name.strip().title() if name else ""
-
 
 async def ensure_user(uid: int, name: str):
     uid = str(uid)
     if uid not in db["users"]:
         db["users"][uid] = {"name": pretty_name(name), "coins": 0, "xp": 0}
-
+        save_db()
 
 async def get_user(uid: int):
     return db["users"].get(str(uid), {"name": "Unknown", "coins": 0, "xp": 0})
-
 
 async def update_user(uid: int, coins: int = None, xp: int = None):
     uid = str(uid)
@@ -51,17 +66,20 @@ async def update_user(uid: int, coins: int = None, xp: int = None):
         db["users"][uid]["coins"] = coins
     if xp is not None:
         db["users"][uid]["xp"] = xp
-
+    save_db()
 
 async def get_all_users():
     return db["users"]
 
+# -----------------------------
+# Init Bot
+# -----------------------------
+app = Client("gaming-bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # -----------------------------
 # Guess Game
 # -----------------------------
 active_guess = {}
-
 
 @app.on_message(filters.command("guess"))
 async def guess_cmd(c: Client, m: Message):
@@ -69,7 +87,6 @@ async def guess_cmd(c: Client, m: Message):
     active_guess[m.chat.id] = num
     await ensure_user(m.from_user.id, m.from_user.first_name)
     await m.reply_text("🤔 I picked a number (1–10). Use /try <n>")
-
 
 @app.on_message(filters.command("try"))
 async def try_cmd(c: Client, m: Message):
@@ -94,7 +111,6 @@ async def try_cmd(c: Client, m: Message):
         hint = "higher" if g < target else "lower"
         await m.reply_text(f"❌ Nope! Try {hint}.")
 
-
 # -----------------------------
 # Start / Help
 # -----------------------------
@@ -102,7 +118,6 @@ async def try_cmd(c: Client, m: Message):
 async def start_handler(c: Client, m: Message):
     await ensure_user(m.from_user.id, m.from_user.first_name)
     await m.reply_text("👋 Welcome! Use /guess to start a game or /help for commands.")
-
 
 @app.on_message(filters.command("help"))
 async def help_handler(c: Client, m: Message):
@@ -118,7 +133,6 @@ async def help_handler(c: Client, m: Message):
     )
     await m.reply_text(txt)
 
-
 # -----------------------------
 # Profile with Rank
 # -----------------------------
@@ -130,11 +144,11 @@ async def profile_handler(c: Client, m: Message):
 
     user = users.get(uid, {"name": m.from_user.first_name, "coins": 0, "xp": 0})
 
-    # Rank निकालना
-    users_sorted = sorted(users.values(), key=lambda x: (x["coins"], x["xp"]), reverse=True)
+    # Rank निकालना (by UID, not name)
+    users_sorted = sorted(users.items(), key=lambda x: (x[1]["coins"], x[1]["xp"]), reverse=True)
     rank = "Unranked"
-    for i, u in enumerate(users_sorted, start=1):
-        if u["name"] == user["name"]:
+    for i, (user_id, u) in enumerate(users_sorted, start=1):
+        if user_id == uid:
             rank = f"#{i}"
             break
 
@@ -152,7 +166,6 @@ async def profile_handler(c: Client, m: Message):
         ]
     )
     await m.reply_text(text, reply_markup=buttons)
-
 
 # -----------------------------
 # Leaderboard
@@ -178,7 +191,6 @@ async def top_handler(c: Client, m: Message):
     )
     await m.reply_text(text, reply_markup=buttons)
 
-
 # -----------------------------
 # Daily Reward
 # -----------------------------
@@ -190,9 +202,11 @@ async def daily_handler(c: Client, m: Message):
     last_claim = db["daily"].get(uid)
     now = datetime.utcnow()
 
-    if last_claim and now < last_claim + timedelta(hours=24):
-        remaining = (last_claim + timedelta(hours=24)) - now
-        return await m.reply_text(f"⏳ You already claimed daily reward.\nCome back in {remaining.seconds//3600}h {(remaining.seconds//60)%60}m.")
+    if last_claim and now < datetime.fromisoformat(last_claim) + timedelta(hours=24):
+        remaining = (datetime.fromisoformat(last_claim) + timedelta(hours=24)) - now
+        return await m.reply_text(
+            f"⏳ You already claimed daily reward.\nCome back in {remaining.seconds//3600}h {(remaining.seconds//60)%60}m."
+        )
 
     # reward
     reward_coins = random.randint(10, 30)
@@ -200,10 +214,10 @@ async def daily_handler(c: Client, m: Message):
 
     user = await get_user(uid)
     await update_user(uid, coins=user["coins"] + reward_coins, xp=user["xp"] + reward_xp)
-    db["daily"][uid] = now
+    db["daily"][uid] = now.isoformat()
+    save_db()
 
     await m.reply_text(f"🎁 Daily Reward Claimed!\n+{reward_coins} coins\n+{reward_xp} XP")
-
 
 # -----------------------------
 # Callback Queries
@@ -215,10 +229,10 @@ async def callback_handler(c: Client, q):
         users = await get_all_users()
         user = users.get(uid, {"name": q.from_user.first_name, "coins": 0, "xp": 0})
 
-        users_sorted = sorted(users.values(), key=lambda x: (x["coins"], x["xp"]), reverse=True)
+        users_sorted = sorted(users.items(), key=lambda x: (x[1]["coins"], x[1]["xp"]), reverse=True)
         rank = "Unranked"
-        for i, u in enumerate(users_sorted, start=1):
-            if u["name"] == user["name"]:
+        for i, (user_id, u) in enumerate(users_sorted, start=1):
+            if user_id == uid:
                 rank = f"#{i}"
                 break
 
@@ -242,20 +256,21 @@ async def callback_handler(c: Client, q):
     elif q.data == "play_game":
         await q.answer("🎮 Start a new game with /guess!", show_alert=True)
 
-
 # -----------------------------
 # Main
 # -----------------------------
 async def main():
+    load_db()
     await app.start()
     me = await app.get_me()
     logger.info("Bot started: @%s (%s)", me.username, me.id)
     await idle()
     await app.stop()
-
+    save_db()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
+        save_db()
         logger.info("Bot stopped")
